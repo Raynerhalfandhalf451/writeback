@@ -30,7 +30,9 @@ const MAX_HISTORY = 40
 const MAX_REPLY_SHAPES = 12
 const MAX_TEXT_LEN = 500
 const EXPORT_LONGEST_EDGE = 1600
-const FETCH_TIMEOUT_MS = 30000
+// Headless Claude turns (cold start + reading the screenshot + drawing) can
+// run well past a minute — match the companion server's own 180s ceiling.
+const FETCH_TIMEOUT_MS = 180000
 
 const HISTORY_SHAPE_ID = createShapeId('riddle-diary-history')
 
