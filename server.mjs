@@ -48,38 +48,108 @@ Placement rules (this is the most important part — placement must be contextua
 - Prefer a small precise answer over a paragraph. Draw diagrams with geo/line/arrow/draw shapes when the user asks for a drawing or a visual completes the answer.
 - Reply with at most 12 shapes.`
 
-function callClaude(prompt) {
+// Incrementally pulls completed {...} objects out of the streamed `"shapes": [...`
+// array so each shape can be forwarded to the canvas before the reply finishes.
+class ShapeStreamParser {
+  constructor(onShape) {
+    this.buf = ''
+    this.started = false
+    this.count = 0
+    this.onShape = onShape
+  }
+  push(text) {
+    this.buf += text
+    if (!this.started) {
+      const m = this.buf.match(/"shapes"\s*:\s*\[/)
+      if (!m) return
+      this.buf = this.buf.slice(m.index + m[0].length)
+      this.started = true
+    }
+    for (;;) {
+      const s = this.buf.indexOf('{')
+      if (s === -1) return
+      let depth = 0, inStr = false, esc = false, end = -1
+      for (let i = s; i < this.buf.length; i++) {
+        const c = this.buf[i]
+        if (esc) { esc = false; continue }
+        if (inStr) {
+          if (c === '\\') esc = true
+          else if (c === '"') inStr = false
+          continue
+        }
+        if (c === '"') inStr = true
+        else if (c === '{') depth++
+        else if (c === '}') { depth--; if (depth === 0) { end = i; break } }
+      }
+      if (end === -1) return
+      const raw = this.buf.slice(s, end + 1)
+      this.buf = this.buf.slice(end + 1)
+      try {
+        this.onShape(JSON.parse(raw))
+        this.count++
+      } catch (e) { /* malformed fragment; skip */ }
+    }
+  }
+}
+
+// Runs claude in streaming mode; calls onShape as each reply shape completes.
+function streamClaude(prompt, onShape) {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['-p', '--output-format', 'json', '--allowedTools', 'Read', '--model', MODEL], {
-      cwd: WORKDIR,
-      stdio: ['pipe', 'pipe', 'pipe'],
+    const child = spawn(
+      'claude',
+      ['-p', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--allowedTools', 'Read', '--model', MODEL],
+      { cwd: WORKDIR, stdio: ['pipe', 'pipe', 'pipe'] }
+    )
+    const parser = new ShapeStreamParser(onShape)
+    let fullText = '', lineBuf = '', err = '', resultError = null
+    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('claude timed out')) }, 240_000)
+    child.stdout.on('data', (d) => {
+      lineBuf += d
+      let idx
+      while ((idx = lineBuf.indexOf('\n')) !== -1) {
+        const line = lineBuf.slice(0, idx)
+        lineBuf = lineBuf.slice(idx + 1)
+        if (!line.trim()) continue
+        let msg
+        try { msg = JSON.parse(line) } catch (e) { continue }
+        if (msg.type === 'stream_event') {
+          const delta = msg.event && msg.event.delta
+          if (delta && delta.type === 'text_delta' && typeof delta.text === 'string') {
+            fullText += delta.text
+            parser.push(delta.text)
+          }
+        } else if (msg.type === 'result') {
+          if (msg.is_error) resultError = String(msg.result).slice(0, 300)
+          else if (typeof msg.result === 'string') fullText = fullText || msg.result
+        }
+      }
     })
-    let out = '', err = ''
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('claude timed out')) }, 180_000)
-    child.stdout.on('data', (d) => (out += d))
     child.stderr.on('data', (d) => (err += d))
     child.on('error', reject)
     child.on('close', (code) => {
       clearTimeout(timer)
+      if (resultError) return reject(new Error(`claude error: ${resultError}`))
       if (code !== 0) return reject(new Error(`claude exited ${code}: ${err.slice(0, 500)}`))
-      resolve(out)
+      // Safety net: if streaming missed shapes (e.g. no deltas), recover them
+      // from the full reply text and emit the remainder.
+      try {
+        const start = fullText.indexOf('{')
+        const end = fullText.lastIndexOf('}')
+        const parsed = JSON.parse(fullText.slice(start, end + 1))
+        const all = Array.isArray(parsed.shapes) ? parsed.shapes : []
+        for (let i = parser.count; i < all.length; i++) onShape(all[i])
+        resolve(Math.max(parser.count, all.length))
+      } catch (e) {
+        if (parser.count > 0) resolve(parser.count)
+        else reject(new Error('no shapes in reply'))
+      }
     })
     child.stdin.write(prompt)
     child.stdin.end()
   })
 }
 
-function extractJson(text) {
-  // Model was told to emit bare JSON, but be forgiving about fences/prose.
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  const candidate = fenced ? fenced[1] : text
-  const start = candidate.indexOf('{')
-  const end = candidate.lastIndexOf('}')
-  if (start === -1 || end === -1) throw new Error('no JSON object in reply')
-  return JSON.parse(candidate.slice(start, end + 1))
-}
-
-async function handleTurn(body) {
+async function handleTurn(body, emit) {
   const { shapes = [], userInput = {}, screenshotDataUrl, history = [] } = body
 
   let screenshotLine = '(no screenshot available — rely on the shape data)'
@@ -112,13 +182,12 @@ async function handleTurn(body) {
     CONTRACT,
   ].join('\n')
 
-  const raw = await callClaude(prompt)
-  const envelope = JSON.parse(raw) // claude -p --output-format json envelope
-  if (envelope.is_error) throw new Error(`claude error: ${String(envelope.result).slice(0, 300)}`)
-  const reply = extractJson(envelope.result)
-  if (!Array.isArray(reply.shapes)) throw new Error('reply missing shapes array')
-  reply.shapes = reply.shapes.slice(0, 12)
-  return reply
+  let sent = 0
+  return streamClaude(prompt, (shape) => {
+    if (sent >= 12) return
+    sent++
+    emit(shape)
+  })
 }
 
 const server = http.createServer(async (req, res) => {
@@ -134,14 +203,17 @@ const server = http.createServer(async (req, res) => {
     let data = ''
     req.on('data', (c) => { data += c; if (data.length > 30_000_000) req.destroy() })
     req.on('end', async () => {
+      // NDJSON stream: {"type":"shape",...} per shape as Claude produces it,
+      // then {"type":"done"}. Errors after headers go on the stream too.
+      res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-cache' })
+      const emit = (shape) => res.write(JSON.stringify({ type: 'shape', shape }) + '\n')
       try {
-        const reply = await handleTurn(JSON.parse(data))
-        res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify(reply))
+        const count = await handleTurn(JSON.parse(data), emit)
+        console.log(`[turn] ok, ${count} shapes`)
+        res.end(JSON.stringify({ type: 'done', count }) + '\n')
       } catch (e) {
         console.error('[turn]', e.message)
-        res.writeHead(500, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ error: e.message }))
+        res.end(JSON.stringify({ type: 'error', error: e.message }) + '\n')
       }
     })
     return

@@ -22,14 +22,14 @@ const SILENT_TEXT = `assistant offline — start the server: ${SERVER_HINT}`
 const IDLE_MS = 2500
 const EDIT_POLL_MS = 150
 const FADE_IN_MS = 1200
-const FADE_STAGGER_MS = 150
 const SILENT_VISIBLE_MS = 6000
 const SILENT_FADE_MS = 900
 const GREETING_FADE_MS = 1400
 const MAX_HISTORY = 40
 const MAX_REPLY_SHAPES = 12
 const MAX_TEXT_LEN = 500
-const EXPORT_LONGEST_EDGE = 1600
+// 1200px is plenty for Claude to read scribbles; smaller images are faster to process.
+const EXPORT_LONGEST_EDGE = 1200
 // Headless Claude turns (cold start + reading the screenshot + drawing) can
 // run well past a minute — match the companion server's own 180s ceiling.
 const FETCH_TIMEOUT_MS = 180000
@@ -162,7 +162,7 @@ export default function (ctx) {
 		const maxDim = bounds ? Math.max(bounds.w, bounds.h, 1) : EXPORT_LONGEST_EDGE
 		const scale = Math.max(0.05, Math.min(3, EXPORT_LONGEST_EDGE / maxDim))
 		try {
-			const res = await editor.toImageDataUrl(ids, { format: 'jpeg', scale, background: true })
+			const res = await editor.toImageDataUrl(ids, { format: 'jpeg', quality: 0.7, scale, background: true })
 			return res.url
 		} catch (e) {
 			return null
@@ -475,26 +475,17 @@ export default function (ctx) {
 		return null
 	}
 
-	async function createReplyShapesFadeIn(partials) {
-		if (!partials.length) return []
-		editor.run(() => editor.createShapes(partials), { history: 'ignore' })
-		await Promise.all(
-			partials.map(
-				(p, i) =>
-					new Promise((resolve) => {
-						setTimeout(() => {
-							if (destroyed) { resolve(); return }
-							animateOpacityCancellable([p.id], { from: 0.05, to: 1, duration: FADE_IN_MS }).then(resolve)
-						}, i * FADE_STAGGER_MS)
-					})
-			)
-		)
-		return partials.map((p) => p.id)
+	function createReplyShapeFadeIn(partial) {
+		editor.run(() => editor.createShapes([partial]), { history: 'ignore' })
+		animateOpacityCancellable([partial.id], { from: 0.05, to: 1, duration: FADE_IN_MS })
 	}
 
 	// ---------- network ----------
 
-	async function postTurn(payload) {
+	// The server streams NDJSON: {"type":"shape",...} per shape as Claude
+	// produces it, then {"type":"done"}. onShape fires per shape so ink can
+	// appear on the canvas while the reply is still being generated.
+	async function postTurn(payload, onShape) {
 		const controller = new AbortController()
 		const onAbort = () => controller.abort()
 		signal.addEventListener('abort', onAbort)
@@ -507,9 +498,29 @@ export default function (ctx) {
 				signal: controller.signal,
 			})
 			if (!res.ok) throw new Error('http ' + res.status)
-			const json = await res.json()
-			if (!json || !Array.isArray(json.shapes)) throw new Error('bad response shape')
-			return json
+			const reader = res.body.getReader()
+			const decoder = new TextDecoder()
+			let buf = ''
+			let count = 0
+			let sawDone = false
+			for (;;) {
+				const { value, done } = await reader.read()
+				if (done) break
+				buf += decoder.decode(value, { stream: true })
+				let idx
+				while ((idx = buf.indexOf('\n')) !== -1) {
+					const line = buf.slice(0, idx).trim()
+					buf = buf.slice(idx + 1)
+					if (!line) continue
+					let msg
+					try { msg = JSON.parse(line) } catch (e) { continue }
+					if (msg.type === 'shape') { count++; onShape(msg.shape) }
+					else if (msg.type === 'done') sawDone = true
+					else if (msg.type === 'error') throw new Error(msg.error)
+				}
+			}
+			if (!sawDone && count === 0) throw new Error('stream ended without shapes')
+			return count
 		} finally {
 			clearTimeout(timeout)
 			signal.removeEventListener('abort', onAbort)
@@ -545,11 +556,20 @@ export default function (ctx) {
 			const indicatorId = createThinkingIndicator(bounds)
 			const stopPulse = startPulse(indicatorId)
 
-			let json = null
+			// Shapes ink in one by one as Claude streams them; the blot keeps
+			// pulsing until the reply is complete.
+			const candidates = []
+			let failed = false
 			try {
-				json = await postTurn(payload)
+				await postTurn(payload, (item) => {
+					if (destroyed || candidates.length >= MAX_REPLY_SHAPES) return
+					const partial = translateReplyItem(item)
+					if (!partial) return
+					candidates.push(partial)
+					createReplyShapeFadeIn(partial)
+				})
 			} catch (e) {
-				json = null
+				failed = true
 			}
 
 			stopPulse()
@@ -557,15 +577,9 @@ export default function (ctx) {
 
 			if (destroyed) return
 
-			if (!json) {
+			if (failed && candidates.length === 0) {
 				showSilentMessage(bounds)
 			} else {
-				const candidates = json.shapes
-					.slice(0, MAX_REPLY_SHAPES * 2)
-					.map(translateReplyItem)
-					.filter(Boolean)
-					.slice(0, MAX_REPLY_SHAPES)
-				await createReplyShapesFadeIn(candidates)
 				const replyText = candidates.map(candidateText).filter((t) => t.length).join(' ').trim()
 				appendHistoryEntries(userText, replyText)
 			}
