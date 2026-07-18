@@ -43,6 +43,12 @@ If the canvas says `assistant offline`, start the server again: `node server.mjs
 
 The document script watches for you to stop writing, screenshots the canvas, and POSTs it (plus every shape's coordinates) to `server.mjs` on port 7877. The server runs headless Claude Code (`claude -p`) — Claude looks at the screenshot and returns shape JSON with exact positions, which fade in on your canvas. To change its behavior, edit `PERSONA` and `CONTRACT` at the top of `server.mjs` and restart.
 
+It uses Claude Sonnet 5 by default (fast, great at this). Pick another model with:
+
+```sh
+WRITEBACK_MODEL=claude-opus-4-8 node server.mjs
+```
+
 ## License
 
 MIT

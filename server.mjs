@@ -12,6 +12,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const PORT = 7877
+// Which Claude model answers canvas turns. Sonnet is the speed/quality sweet
+// spot here; override with e.g. WRITEBACK_MODEL=claude-opus-4-8
+const MODEL = process.env.WRITEBACK_MODEL || 'claude-sonnet-5'
 const WORKDIR = join(tmpdir(), 'riddle-diary')
 mkdirSync(WORKDIR, { recursive: true })
 
@@ -47,7 +50,7 @@ Placement rules (this is the most important part — placement must be contextua
 
 function callClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const child = spawn('claude', ['-p', '--output-format', 'json', '--allowedTools', 'Read'], {
+    const child = spawn('claude', ['-p', '--output-format', 'json', '--allowedTools', 'Read', '--model', MODEL], {
       cwd: WORKDIR,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
@@ -146,4 +149,4 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404); res.end()
 })
 
-server.listen(PORT, '127.0.0.1', () => console.log(`riddle-diary server on http://127.0.0.1:${PORT}`))
+server.listen(PORT, '127.0.0.1', () => console.log(`writeback server on http://127.0.0.1:${PORT} (model: ${MODEL})`))
