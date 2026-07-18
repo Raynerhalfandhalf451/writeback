@@ -33,7 +33,7 @@ node server.mjs
 1. Open tldraw offline, create or open a document.
 2. Menu: **Develop → Reveal Script…**
 3. Replace the revealed `script/main.js` with this repo's [`canvas-script/main.js`](canvas-script/main.js) and save — it hot-reloads instantly.
-4. Save the document (Cmd/Ctrl+S).
+4. Save the document (Cmd/Ctrl+S). **Don't skip this** — the script and conversation history live inside the `.tldraw` file, and an unsaved Untitled document can lose them if the app closes.
 
 **4. Write or scribble on the canvas, then pause.** An ink-blot pulses while it thinks, and the answer fades in.
 
